@@ -171,7 +171,12 @@
         st.tracking = false;
         window.__swipe = null;
         root.classList.remove('swiping');
-        if (commit) { try { window.scrollTo(0, 0); } catch (e) {} }
+        if (commit) {
+            try { window.scrollTo(0, 0); } catch (e) {}
+            /* 네이티브 글래스는 WebView.getScrollY() 가 갱신되기 전까지 이전 페이지의 스크롤값으로 캡슐 위치(sticky)를 계산한다.
+               → 새 페이지 캡슐이 잠깐 상단에 고정된(=이전 검색 화면 같은) 위치로 보이는 원인. 확정 스크롤(0)을 즉시 알려준다. */
+            try { if (window.GlassBridge && window.GlassBridge.settled) window.GlassBridge.settled(0); } catch (e) {}
+        }
         resetInner(st.curInner);
         resetInner(st.peekInner);
         st.cur.classList.remove('swipe-cur');
@@ -179,9 +184,11 @@
             st.peek.classList.remove('swipe-peek');
             if (!commit) st.peek.style.animation = '';   // 확정된 페이지는 옵저버가 정리
         }
+        /* 최종 상태(새 페이지의 캡슐)를 즉시 push → 네이티브가 같은 프레임에 오프셋 초기화 + 캡슐 교체 */
+        try { if (window.__glassSync) window.__glassSync(); } catch (e) {}
         st = null;
         animating = false;
-        kickGlass();     // 최종 상태(새 페이지의 캡슐)를 push → 네이티브는 같은 프레임에 오프셋 초기화
+        kickGlass();
     }
 
     function finishNow() {
