@@ -27,6 +27,8 @@ object GlassHost {
 
         val controller = GlassController(webView)
         webView.addJavascriptInterface(controller, "GlassBridge")
+        // 스와이프 전환 중 검색 캡슐이 손가락과 같은 프레임에 움직이도록 터치를 관찰만 한다(소비하지 않으므로 기존 동작 불변)
+        webView.setOnTouchListener { _, ev -> controller.onTouch(ev); false }
         webView.setOnScrollChangeListener { _, _, y, _, _ -> controller.onNativeScroll(y) }
 
         val compose = ComposeView(activity).apply {
