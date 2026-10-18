@@ -5433,7 +5433,3 @@ html.swiping {
     -webkit-user-select: none;
     user-select: none;
 }
-
-html.swiping .view-inner {
-    backface-visibility: hidden;
-}
