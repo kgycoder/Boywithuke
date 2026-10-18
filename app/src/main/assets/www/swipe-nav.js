@@ -73,7 +73,26 @@
         } catch (e) { /* 렌더 실패가 제스처를 깨뜨리지 않도록 */ }
     }
 
+    /* 네이티브 글래스에 알림: 상태 즉시 재전송 요청 / 캡슐 가로 오프셋 전달 */
+    function kickGlass() { try { if (window.__glassKick) window.__glassKick(300); } catch (e) {} }
+    function sendOffsets(a, b) {
+        try { if (window.GlassBridge && window.GlassBridge.swipe) window.GlassBridge.swipe(a, b); } catch (e) {}
+    }
+
+    /* 넘어오는 페이지의 검색 캡슐 위치(고정 컨테이너 기준, 스크롤 0) — 네이티브 캡슐(search2)용 */
+    function peekCapsule(v) {
+        const wrap = v.querySelector('.mob-srch-wrap');
+        const inp = wrap && wrap.querySelector('.srch-inp');
+        if (!wrap || !inp) return null;
+        const r = wrap.getBoundingClientRect();
+        return {
+            r: { x: r.left, y: r.top, w: r.width, h: r.height }, pin: r.top,
+            id: inp.id, value: inp.value, ph: inp.getAttribute('placeholder') || '', focused: false
+        };
+    }
+
     function clearPeek() {
+        if (window.__swipe) window.__swipe.peek2 = null;
         if (!st || !st.peek) return;
         st.peek.classList.remove('swipe-peek');
         st.peek.style.animation = '';
@@ -96,11 +115,13 @@
         v.style.animation = 'none';                 // 표시될 때 vIn 애니메이션이 재생되지 않도록
         v.classList.add('swipe-peek');
         if (st.peekInner) st.peekInner.style.willChange = 'transform, opacity';
+        if (window.__swipe) { window.__swipe.peek2 = peekCapsule(v); kickGlass(); }
     }
 
     function begin(x) {
         st.locked = 'x';
         st.ox = x;
+        window.__swipe = { active: true, frozen: undefined, peek2: null };   // glass-bridge.js 가 참조
         root.classList.add('swiping');
         st.cur.classList.add('swipe-cur');
         if (st.curInner) st.curInner.style.willChange = 'transform, opacity';
@@ -128,11 +149,27 @@
             st.peekInner.style.transform = 'translate3d(' + (tx + st.dir * W) + 'px,0,0)';
             st.peekInner.style.opacity = String(0.65 + 0.35 * p);
         }
+        sendOffsets(tx, st.peek ? tx + st.dir * W : 0);
+    }
+
+    /* 정착 애니메이션(CSS transition) 동안에도 네이티브 캡슐이 같은 위치를 따라가도록 프레임마다 현재 값을 전달 */
+    function track(mine) {
+        if (st !== mine || !mine.tracking) return;
+        let tx = 0;
+        try {
+            const m = getComputedStyle(mine.curInner).transform;
+            if (m && m !== 'none') tx = new DOMMatrix(m).m41;
+        } catch (e) {}
+        const W = root.clientWidth || window.innerWidth;
+        sendOffsets(tx, mine.peek ? tx + mine.dir * W : 0);
+        requestAnimationFrame(() => track(mine));
     }
 
     function cleanup(commit) {
         if (!st) return;
         clearTimeout(settleTimer);
+        st.tracking = false;
+        window.__swipe = null;
         root.classList.remove('swiping');
         if (commit) { try { window.scrollTo(0, 0); } catch (e) {} }
         resetInner(st.curInner);
@@ -144,6 +181,7 @@
         }
         st = null;
         animating = false;
+        kickGlass();     // 최종 상태(새 페이지의 캡슐)를 push → 네이티브는 같은 프레임에 오프셋 초기화
     }
 
     function finishNow() {
@@ -177,6 +215,7 @@
         }
 
         const mine = st;
+        if (st.curInner && (st.peek || st.tx)) { st.tracking = true; requestAnimationFrame(() => track(mine)); }
         const done = () => { if (st === mine) cleanup(mine.commit); };
         if (st.curInner) {
             const onEnd = e => {
