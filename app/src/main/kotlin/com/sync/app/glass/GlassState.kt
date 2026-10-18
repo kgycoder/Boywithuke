@@ -39,6 +39,10 @@ data class GlassState(
     val accent: Long = 0xFFFA2D5AL,
     val nav: NavState? = null,
     val search: SearchState? = null,
+    /** 스와이프 전환 중 "넘어오는 페이지"의 검색 캡슐 (없으면 null) */
+    val search2: SearchState? = null,
+    /** JS 가 스와이프 전환 중임을 알림 → false 로 바뀌는 push 에서 스와이프 오프셋이 함께 초기화된다 */
+    val swiping: Boolean = false,
     val bar: BarState? = null,
     val ctx: CtxState? = null,
     val dialog: DialogState? = null,
@@ -51,10 +55,9 @@ data class GlassState(
             return GlassState(
                 accent = parseColor(o.optString("acc")),
                 nav = o.optJSONObject("nav")?.let { NavState(rect(it), it.optInt("active")) },
-                search = o.optJSONObject("search")?.let {
-                    SearchState(rect(it), it.optDouble("pin", -10000.0).toFloat(), it.optString("id"), it.optString("value"),
-                        it.optString("ph"), it.optBoolean("focused"))
-                },
+                search = o.optJSONObject("search")?.let { search(it) },
+                search2 = o.optJSONObject("search2")?.let { search(it) },
+                swiping = o.optInt("sw", 0) == 1,
                 bar = o.optJSONObject("bar")?.let {
                     BarState(rect(it), it.optString("art"), it.optString("title"), it.optString("ch"),
                         it.optBoolean("playing"), it.optBoolean("fav"), parseColor(it.optString("accent")),
@@ -85,6 +88,10 @@ data class GlassState(
                 }
             )
         }
+
+        private fun search(it: JSONObject): SearchState =
+            SearchState(rect(it), it.optDouble("pin", -10000.0).toFloat(), it.optString("id"), it.optString("value"),
+                it.optString("ph"), it.optBoolean("focused"))
 
         private fun rect(o: JSONObject): CssRect {
             val r = o.getJSONObject("r")
