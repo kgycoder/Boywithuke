@@ -98,7 +98,8 @@
 
         /* 검색 캡슐 (현재 활성 뷰) */
         const wrap = document.querySelector('.view.on .mob-srch-wrap');
-        if (wrap && exposed(wrap)) {
+        /* 스와이프 전환 중(html.swiping)에는 네이티브 검색 캡슐을 숨기고, 페이지와 함께 움직이는 DOM 캡슐(style.css)을 보여준다 */
+        if (wrap && !document.documentElement.classList.contains('swiping') && exposed(wrap)) {
             const inp = wrap.querySelector('.srch-inp');
             if (inp) {
                 const g = searchGeom(wrap);
