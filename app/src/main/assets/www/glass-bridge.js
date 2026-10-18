@@ -264,6 +264,12 @@
     syncNpLock();
     kick(1200);
     window.__glassKick = kick;   // swipe-nav.js 가 캡슐 상태 갱신을 요청할 때 사용
+    /* 스와이프 종료 시 한 프레임의 공백/잔상 없이 최종 상태를 즉시(동기) 전송 */
+    window.__glassSync = function () {
+        geomDirty = true;
+        if (raf) { cancelAnimationFrame(raf); raf = 0; }
+        flush();
+    };
 
     /* ── Native → DOM ── */
     function fireKey(el, key) {
