@@ -75,8 +75,16 @@
 
     /* 네이티브 글래스에 알림: 상태 즉시 재전송 요청 / 캡슐 가로 오프셋 전달 */
     function kickGlass() { try { if (window.__glassKick) window.__glassKick(300); } catch (e) {} }
-    function sendOffsets(a, b) {
-        try { if (window.GlassBridge && window.GlassBridge.swipe) window.GlassBridge.swipe(a, b); } catch (e) {}
+    /* 드래그 중 캡슐 위치는 네이티브가 같은 터치 스트림에서 직접 계산한다(프레임당 IPC 없음) — 시작/정착 시에만 1회 통보 */
+    function nativeBegin(x) {
+        try {
+            const W = root.clientWidth || window.innerWidth;
+            if (window.GlassBridge && window.GlassBridge.swipeBegin)
+                window.GlassBridge.swipeBegin(x, W, st.idx > 0, st.idx < ORDER.length - 1);
+        } catch (e) {}
+    }
+    function nativeSettle(commit, dir, ms) {
+        try { if (window.GlassBridge && window.GlassBridge.swipeSettle) window.GlassBridge.swipeSettle(commit, dir, ms); } catch (e) {}
     }
 
     /* 넘어오는 페이지의 검색 캡슐 위치(고정 컨테이너 기준, 스크롤 0) — 네이티브 캡슐(search2)용 */
@@ -111,7 +119,7 @@
         st.tName = name;
         st.peek = v;
         st.peekInner = inner(v);
-        prerender(name);
+        setTimeout(() => { if (st && st.peek === v && st.locked === 'x') prerender(name); }, 0);   // 드래그 첫 프레임을 막지 않도록 지연
         v.style.animation = 'none';                 // 표시될 때 vIn 애니메이션이 재생되지 않도록
         v.classList.add('swipe-peek');
         if (st.peekInner) st.peekInner.style.willChange = 'transform, opacity';
@@ -125,6 +133,7 @@
         root.classList.add('swiping');
         st.cur.classList.add('swipe-cur');
         if (st.curInner) st.curInner.style.willChange = 'transform, opacity';
+        nativeBegin(x);
         const a = document.activeElement;
         if (a && a !== document.body && a.blur) { try { a.blur(); } catch (e) {} }
     }
@@ -149,26 +158,11 @@
             st.peekInner.style.transform = 'translate3d(' + (tx + st.dir * W) + 'px,0,0)';
             st.peekInner.style.opacity = String(0.65 + 0.35 * p);
         }
-        sendOffsets(tx, st.peek ? tx + st.dir * W : 0);
-    }
-
-    /* 정착 애니메이션(CSS transition) 동안에도 네이티브 캡슐이 같은 위치를 따라가도록 프레임마다 현재 값을 전달 */
-    function track(mine) {
-        if (st !== mine || !mine.tracking) return;
-        let tx = 0;
-        try {
-            const m = getComputedStyle(mine.curInner).transform;
-            if (m && m !== 'none') tx = new DOMMatrix(m).m41;
-        } catch (e) {}
-        const W = root.clientWidth || window.innerWidth;
-        sendOffsets(tx, mine.peek ? tx + mine.dir * W : 0);
-        requestAnimationFrame(() => track(mine));
     }
 
     function cleanup(commit) {
         if (!st) return;
         clearTimeout(settleTimer);
-        st.tracking = false;
         window.__swipe = null;
         root.classList.remove('swiping');
         if (commit) {
@@ -203,6 +197,7 @@
         const tr = 'transform ' + ms + 'ms ' + EASE + ', opacity ' + ms + 'ms ' + EASE;
         st.commit = commit && !!st.peek;
         animating = true;
+        nativeSettle(st.commit, st.dir || 1, ms);   // 네이티브 캡슐도 같은 시간/곡선으로 즉시 정착 시작 (gv 렌더링보다 먼저)
 
         if (st.commit) {
             /* 기존 라우팅 그대로 호출 → .on / 하단 메뉴 활성 탭 / 렌더링이 즉시 갱신(글래스 인디케이터도 동시에 이동) */
@@ -222,7 +217,6 @@
         }
 
         const mine = st;
-        if (st.curInner && (st.peek || st.tx)) { st.tracking = true; requestAnimationFrame(() => track(mine)); }
         const done = () => { if (st === mine) cleanup(mine.commit); };
         if (st.curInner) {
             const onEnd = e => {
