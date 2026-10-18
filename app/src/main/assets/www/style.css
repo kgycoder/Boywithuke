@@ -5404,3 +5404,51 @@ html.bg-mode *, html.bg-mode *::before, html.bg-mode *::after {
     backdrop-filter: none !important;
     -webkit-backdrop-filter: none !important;
 }
+
+
+/* ════════════════════════════════════════════════════════
+   SWIPE NAV — 좌우 스와이프로 메뉴(홈/검색/즐겨찾기/대기열/플레이리스트) 전환
+   (swipe-nav.js 가 .swipe-cur / .swipe-peek / html.swiping 을 부여한다)
+════════════════════════════════════════════════════════ */
+
+/* 현재 페이지: 스와이프 확정 직후 .on 이 이동해도 애니메이션이 끝날 때까지 계속 표시 */
+.view.swipe-cur {
+    display: block !important;
+}
+
+/* 넘어오는 페이지: 문서 스크롤 위치와 무관하게 화면에 고정해서 맨 위부터 보여준다 */
+.view.swipe-peek {
+    display: block !important;
+    position: fixed;
+    left: 0;
+    top: var(--safe-top, 0px);
+    width: 100%;
+    height: calc(100dvh - var(--safe-top, 0px));
+    overflow: hidden;
+    z-index: 5;
+    pointer-events: none;
+}
+
+html.swiping {
+    -webkit-user-select: none;
+    user-select: none;
+}
+
+html.swiping .view-inner {
+    backface-visibility: hidden;
+}
+
+/* 스와이프 중에는 네이티브 검색 캡슐 대신 DOM 캡슐이 페이지와 함께 움직인다 */
+html.glass-native.swiping .mob-srch-wrap {
+    background: linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.02)) !important;
+    border-color: rgba(255,255,255,.16) !important;
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,.18),
+        inset 0 -1px 0 rgba(255,255,255,.05),
+        0 12px 34px rgba(0,0,0,.30) !important;
+    -webkit-backdrop-filter: blur(12px) saturate(1.4) !important;
+}
+
+html.glass-native.swiping .mob-srch-wrap > :not(.sug-drop) {
+    opacity: 1 !important;
+}
