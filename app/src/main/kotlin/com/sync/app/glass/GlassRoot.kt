@@ -67,7 +67,8 @@ fun GlassRoot(webView: WebView, c: GlassController) {
         Box(if (chromeAlpha < 0.999f) Modifier.fillMaxSize().graphicsLayer { alpha = chromeAlpha } else Modifier.fillMaxSize()) {
             s.nav?.let { NavGlass(it, backdrop, c) }
             s.bar?.let { BarGlass(it, backdrop, c) }
-            s.search?.let { SearchGlass(it, backdrop, c) }
+            s.search?.let { SearchGlass(it, backdrop, c) { c.swipeDx } }
+            s.search2?.let { SearchGlass(it, backdrop, c) { c.swipeDx2 } }
         }
         s.ctx?.let { ContextMenuGlass(it, backdrop, c) }
         s.dialog?.let { DialogGlass(it, backdrop, c) }
@@ -92,11 +93,13 @@ internal fun searchTop(c: GlassController, s: SearchState, d: Float): Float =
  */
 internal class SearchPlacement { @JvmField var topPx: Int = 0 }
 
-internal fun Modifier.searchRect(c: GlassController, s: SearchState, placed: SearchPlacement): Modifier = this
+internal fun Modifier.searchRect(
+    c: GlassController, s: SearchState, placed: SearchPlacement, dx: () -> Float = { 0f }
+): Modifier = this
     .offset {
         val top = (searchTop(c, s, density) * density).roundToInt()
         placed.topPx = top
-        IntOffset((s.rect.x * density).roundToInt(), top)
+        IntOffset(((s.rect.x + dx()) * density).roundToInt(), top)
     }
     .size(s.rect.w.dp, s.rect.h.dp)
 
@@ -131,24 +134,29 @@ internal class RegionRecorder(private val c: GlassController) {
     private var cachedFor: GlassState? = null
     private var cachedDensity = 0f
     private var cachedScroll = Float.NaN
+    private var cachedDx = Float.NaN
+    private var cachedDx2 = Float.NaN
     private var cachedPath: Path? = null
 
     val onDraw: ContentDrawScope.() -> Unit = {
         val st = c.state // snapshot read → redraw when the set of glass surfaces / rects changes
         val sc = if (st.search != null) c.cssScroll(density) else 0f
-        if (cachedFor !== st || cachedDensity != density || cachedScroll != sc) {
-            cachedPath = buildPath(st, density, sc)
-            cachedFor = st; cachedDensity = density; cachedScroll = sc
+        val dx = c.swipeDx
+        val dx2 = c.swipeDx2
+        if (cachedFor !== st || cachedDensity != density || cachedScroll != sc || cachedDx != dx || cachedDx2 != dx2) {
+            cachedPath = buildPath(st, density, sc, dx, dx2)
+            cachedFor = st; cachedDensity = density; cachedScroll = sc; cachedDx = dx; cachedDx2 = dx2
         }
         val path = cachedPath
         val outer = this
         if (path != null) clipPath(path) { outer.drawContent() }
     }
 
-    private fun buildPath(s: GlassState, d: Float, scroll: Float): Path? {
+    private fun buildPath(s: GlassState, d: Float, scroll: Float, dx: Float, dx2: Float): Path? {
         val pad = PAD_DP * d
         val rects = listOfNotNull(
-            s.nav?.rect, s.bar?.rect, s.search?.let { it.rect.copy(y = maxOf(it.pin, it.rect.y - scroll)) }, s.ctx?.rect, s.dialog?.rect, s.confirm?.rect, s.add?.rect
+            s.nav?.rect, s.bar?.rect, s.search?.let { it.rect.copy(x = it.rect.x + dx, y = maxOf(it.pin, it.rect.y - scroll)) },
+            s.search2?.let { it.rect.copy(x = it.rect.x + dx2, y = maxOf(it.pin, it.rect.y - scroll)) }, s.ctx?.rect, s.dialog?.rect, s.confirm?.rect, s.add?.rect
         )
         if (rects.isEmpty()) return null
         return Path().apply {
