@@ -85,6 +85,8 @@
         if (npEl) document.documentElement.classList.toggle('np-open', npEl.classList.contains('on'));
     }
 
+    let lastSearch = null;   // 스와이프 직전의 검색 캡슐 상태(전환 중 고정용)
+
     function collect() {
         const st = {};
         st.acc = (typeof _accentColor === 'function' ? _accentColor() : '#fa2d5a');
@@ -96,10 +98,21 @@
             st.nav = { r: box(nav.getBoundingClientRect()), active: Math.max(0, btns.findIndex(b => b.classList.contains('on'))) };
         }
 
+        /* 스와이프 메뉴 전환 중(swipe-nav.js 가 window.__swipe 를 세팅):
+           검색 캡슐은 전환 직전 값으로 고정(frozen)하고, 넘어오는 페이지의 캡슐(search2)을 함께 보낸다.
+           두 캡슐의 가로 이동은 네이티브가 GlassBridge.swipe() 로 프레임마다 받아 처리한다(리퀴드 글래스 그대로 유지). */
+        const sw = window.__swipe;
+        const swiping = !!(sw && sw.active);
+        if (swiping) {
+            st.sw = 1;
+            if (sw.frozen === undefined) sw.frozen = lastSearch;
+            if (sw.frozen) st.search = sw.frozen;
+            if (sw.peek2) st.search2 = sw.peek2;
+        }
+
         /* 검색 캡슐 (현재 활성 뷰) */
         const wrap = document.querySelector('.view.on .mob-srch-wrap');
-        /* 스와이프 전환 중(html.swiping)에는 네이티브 검색 캡슐을 숨기고, 페이지와 함께 움직이는 DOM 캡슐(style.css)을 보여준다 */
-        if (wrap && !document.documentElement.classList.contains('swiping') && exposed(wrap)) {
+        if (!swiping && wrap && exposed(wrap)) {
             const inp = wrap.querySelector('.srch-inp');
             if (inp) {
                 const g = searchGeom(wrap);
@@ -110,6 +123,8 @@
                 };
             }
         }
+
+        if (!swiping) lastSearch = st.search || null;
 
         /* 미니 플레이어 */
         const bar = $('bar');
@@ -248,6 +263,7 @@
     window.addEventListener('load', () => kick(500));
     syncNpLock();
     kick(1200);
+    window.__glassKick = kick;   // swipe-nav.js 가 캡슐 상태 갱신을 요청할 때 사용
 
     /* ── Native → DOM ── */
     function fireKey(el, key) {
