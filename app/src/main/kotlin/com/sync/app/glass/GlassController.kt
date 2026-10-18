@@ -1,7 +1,10 @@
 package com.sync.app.glass
 
+import android.animation.ValueAnimator
 import android.os.Handler
 import android.os.Looper
+import android.view.MotionEvent
+import android.view.animation.PathInterpolator
 import android.webkit.JavascriptInterface
 import android.webkit.WebView
 import androidx.compose.runtime.getValue
@@ -46,6 +49,75 @@ class GlassController(private val webView: WebView) {
     var swipeDx2 by mutableFloatStateOf(0f)
         private set
 
+    /* ── 스와이프 메뉴 전환: 캡슐 오프셋을 JS 왕복 없이 네이티브가 터치에서 직접 계산한다 ──
+     * JS(swipe-nav.js)는 "시작(원점/폭/이웃 유무)"과 "정착(확정 여부/방향/시간)" 두 번만 알려 주고,
+     * 드래그 중 매 프레임의 위치는 WebView 로 들어오는 같은 터치 스트림(onTouch)에서 같은 공식으로 계산한다.
+     * (프레임마다 JS→Java 동기 IPC → UI 스레드 post → 재배치를 거치던 지연 제거) */
+    private var swActive = false
+    private var swOx = 0f
+    private var swW = 0f
+    private var swHasPrev = false
+    private var swHasNext = false
+    private var swDir = 1
+    private var swTouching = false
+    private var swTouchX = 0f
+    private var swAnim: ValueAnimator? = null
+
+    /** WebView 의 터치를 관찰만 한다(소비하지 않음). UI 스레드에서 호출. */
+    fun onTouch(ev: MotionEvent) {
+        val d = webView.resources.displayMetrics.density
+        when (ev.actionMasked) {
+            MotionEvent.ACTION_DOWN -> { swTouching = true; swTouchX = ev.x / d }
+            MotionEvent.ACTION_MOVE -> {
+                swTouchX = ev.x / d
+                if (swActive && swTouching && ev.pointerCount == 1) applySwipeTouch()
+            }
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> swTouching = false
+        }
+    }
+
+    private fun applySwipeTouch() {
+        val dx = swTouchX - swOx
+        val dir = if (dx < 0f) 1 else if (dx > 0f) -1 else swDir
+        swDir = dir
+        val has = if (dir == 1) swHasNext else swHasPrev
+        val cur = if (has) dx.coerceIn(-swW, swW) else dx * 0.28f      // swipe-nav.js 의 render() 와 동일 공식
+        swipeDx = cur
+        swipeDx2 = if (has) cur + dir * swW else 0f
+    }
+
+    @JavascriptInterface
+    fun swipeBegin(originX: Float, width: Float, hasPrev: Boolean, hasNext: Boolean) {
+        main.post {
+            swAnim?.cancel()
+            swOx = originX; swW = width; swHasPrev = hasPrev; swHasNext = hasNext
+            swActive = true
+            if (swTouching) applySwipeTouch()      // JS 가 잠금을 확정하기 전에 이미 들어온 이동량까지 즉시 반영
+        }
+    }
+
+    @JavascriptInterface
+    fun swipeSettle(commit: Boolean, dir: Int, ms: Int) {
+        main.post {
+            swActive = false
+            swAnim?.cancel()
+            val c0 = swipeDx; val o0 = swipeDx2
+            val cT = if (commit) -dir * swW else 0f
+            val oT = if (commit) 0f else dir * swW
+            swAnim = ValueAnimator.ofFloat(0f, 1f).apply {
+                duration = ms.toLong()
+                interpolator = PathInterpolator(0.22f, 0.82f, 0.28f, 1f)    // CSS 정착 애니메이션과 동일 곡선
+                addUpdateListener {
+                    val e = it.animatedValue as Float
+                    swipeDx = c0 + (cT - c0) * e
+                    if (o0 != 0f || commit) swipeDx2 = o0 + (oT - o0) * e
+                }
+                start()
+            }
+        }
+    }
+
+    /** 이전 버전 호환용 (사용하지 않음) */
     @JavascriptInterface
     fun swipe(dx: Float, dx2: Float) {
         main.post { swipeDx = dx; swipeDx2 = dx2 }
@@ -109,7 +181,7 @@ class GlassController(private val webView: WebView) {
         // parse on the JS bridge thread; only the already-built immutable state hops to the UI thread
         val parsed = try { GlassState.parse(json) } catch (_: Exception) { return }
         main.post {
-            if (!parsed.swiping) { swipeDx = 0f; swipeDx2 = 0f }   // 스와이프 종료: 오프셋 초기화와 상태 교체를 같은 프레임에
+            if (!parsed.swiping) { swAnim?.cancel(); swActive = false; swipeDx = 0f; swipeDx2 = 0f }   // 스와이프 종료: 오프셋 초기화와 상태 교체를 같은 프레임에
             state = parsed
         }
     }
