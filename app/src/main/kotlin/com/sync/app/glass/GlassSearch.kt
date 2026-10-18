@@ -135,7 +135,7 @@ private class ScrollCompensatedBackdrop(
 }
 
 @Composable
-internal fun SearchGlass(s: SearchState, backdrop: Backdrop, c: GlassController) {
+internal fun SearchGlass(s: SearchState, backdrop: Backdrop, c: GlassController, dx: () -> Float = { 0f }) {
     val scope = rememberCoroutineScope()
     val highlight = remember(scope) { InteractiveHighlight(scope) }
     val accent = LocalGlassAccent.current
@@ -145,7 +145,7 @@ internal fun SearchGlass(s: SearchState, backdrop: Backdrop, c: GlassController)
     }
     Row(
         Modifier
-            .searchRect(c, s, placed)
+            .searchRect(c, s, placed, dx)
             // Everything below (glass surface, highlight, shadow, field) is drawn at the live scroll position.
             .drawWithContent {
                 val dy = searchDrawDelta(c, s, placed)
