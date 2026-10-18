@@ -5,6 +5,7 @@ import android.os.Looper
 import android.webkit.JavascriptInterface
 import android.webkit.WebView
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -37,6 +38,18 @@ class GlassController(private val webView: WebView) {
      *  invalidation behind, which showed up as a capsule that stayed misaligned until the next scroll). */
     var settleTick by mutableIntStateOf(0)
         private set
+
+    /** 스와이프 메뉴 전환 중 검색 캡슐의 가로 오프셋(CSS px == dp).
+     *  [swipeDx] = 현재 페이지의 캡슐, [swipeDx2] = 넘어오는 페이지의 캡슐. state 푸시와 별개로 프레임마다 갱신된다. */
+    var swipeDx by mutableFloatStateOf(0f)
+        private set
+    var swipeDx2 by mutableFloatStateOf(0f)
+        private set
+
+    @JavascriptInterface
+    fun swipe(dx: Float, dx2: Float) {
+        main.post { swipeDx = dx; swipeDx2 = dx2 }
+    }
 
     /** CSS px. Non-zero only if the page (JS) reported a settled scroll offset that differs from WebView.getScrollY(). */
     private var settleBias = 0f
@@ -95,7 +108,10 @@ class GlassController(private val webView: WebView) {
         lastJson = json
         // parse on the JS bridge thread; only the already-built immutable state hops to the UI thread
         val parsed = try { GlassState.parse(json) } catch (_: Exception) { return }
-        main.post { state = parsed }
+        main.post {
+            if (!parsed.swiping) { swipeDx = 0f; swipeDx2 = 0f }   // 스와이프 종료: 오프셋 초기화와 상태 교체를 같은 프레임에
+            state = parsed
+        }
     }
 
     fun cmd(build: JSONObject.() -> Unit) {
